@@ -1,0 +1,116 @@
+trigger:
+ branches:
+   include:
+     - main
+
+pool: 
+  name: DevopsEngineers
+
+stages:
+- stage: TerraformInitValidate
+  jobs:
+  - job: TerraformInitValidate
+    steps:
+    - task: TerraformTask@5
+      displayName: TerraformInit
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev'
+        backendServiceArm: 'DevopsEngineerAkansha'
+        backendAzureRmStorageAccountName: 'tfstateakansha01'
+        backendAzureRmContainerName: 'devtfstate'
+        backendAzureRmKey: 'terraform.tfstate'
+
+    - task: TerraformTask@5
+      displayName: 'Terraform Validate'
+      inputs:
+        provider: 'azurerm'
+        command: 'validate'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev'
+
+- stage: TerraformScanningStage
+  jobs:
+    - job: ScanningTools
+      steps:
+      - task: tfsec@1
+        displayName: 'TFSEC Scanning'
+        inputs:
+          version: 'v1.26.0'
+
+      - task: Bash@3
+        displayName: 'TFLINT Scanning'
+        inputs:
+          targetType: 'inline'
+          script: |
+                tflint --version
+                tflint --chdir .
+
+      - task: Bash@3
+        displayName: 'CheckOvScanning'
+        inputs:
+          targetType: 'inline'
+          script: |
+            brew install checkov
+            checkov --version
+            checkov -d . || true
+
+      - task: Bash@3
+        displayName: 'Run TruffleHog'
+        inputs:
+          targetType: 'inline'
+          script: |
+            brew install trufflehog
+            trufflehog --version
+            trufflehog filesystem . --no-update || true
+      
+      - task: Bash@3
+        displayName: 'Download & Terrascanning Run'
+        inputs:
+          targetType: 'inline'
+          script: |
+            export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
+            brew update
+            brew install terrascan || brew upgrade terrascan
+            terrascan version
+        
+      - task: Bash@3
+        displayName: 'RunTerrascan'
+        inputs:
+          targetType: 'inline'
+          script: 'terrascan scan -t azure -i terraform -d . || true'
+
+- stage: PlanManualValidation
+  jobs:
+    - job: ApproveBeforePlan
+      pool: server
+      steps:
+      - task: ManualValidation@1
+        displayName: 'ManualValidation'
+        inputs:
+          notifyUsers: 'akanshasaxena0015@gmail.com'
+          approvers: 'akanshasaxena0015@gmail.com'
+
+- stage: TerraformInitApply
+  jobs:
+    - job: TerraformInitApply
+      steps:
+      - task: TerraformTask@5
+        displayName: TerraformInit
+        inputs:
+          provider: 'azurerm'
+          command: 'init'
+          workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev'
+          backendServiceArm: 'DevopsEngineerAkansha'
+          backendAzureRmStorageAccountName: 'tfstateakansha01'
+          backendAzureRmContainerName: 'devtfstate'
+          backendAzureRmKey: 'terraform.tfstate'
+          
+      - task: TerraformTask@5
+        displayName: TerraformApply
+        inputs:
+          provider: 'azurerm'
+          command: 'apply'
+          environmentServiceNameAzureRM: 'DevopsEngineerAkansha'
+          environmentAzureRmOverrideSubscriptionID: 'a5aaa5ad-6e93-46b9-a1d8-b3f7d19bf107'
+          workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev'
