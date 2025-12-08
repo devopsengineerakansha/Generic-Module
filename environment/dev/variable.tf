@@ -35,6 +35,12 @@ variable "vms" {
   }))
 }
 
+variable "administrator_login_password" {
+  type        = string
+  sensitive   = true
+  description = "Password for SQL Server admin login"
+}
+
  variable "container_registries"{
     type = map(object({
   name                = string
